@@ -1,3 +1,4 @@
+
 using Microsoft.Data.SqlClient;
 using System.Data;
 using Tutorial9.Model.DTO;
@@ -16,9 +17,6 @@ namespace Tutorial9.Services
         
         public async Task<int> AddProductToWarehouse(ProductWarehouseRequestDTO request)
         {
-            if (request.Amount <= 0)
-                throw new ArgumentException("Amount must be greater than 0");
-
             using (SqlConnection connection = new SqlConnection(_connectionString))
             {
                 await connection.OpenAsync();
@@ -71,9 +69,6 @@ namespace Tutorial9.Services
         
         public async Task<int> AddProductToWarehouseWithProcedure(ProductWarehouseRequestDTO request)
         {
-            if (request.Amount <= 0)
-                throw new ArgumentException("Amount must be greater than 0");
-
             using (SqlConnection connection = new SqlConnection(_connectionString))
             {
                 await connection.OpenAsync();
@@ -96,186 +91,6 @@ namespace Tutorial9.Services
             }
         }
 
-        public async Task<IEnumerable<WarehouseDTO>> GetAllWarehouses()
-        {
-            var warehouses = new List<WarehouseDTO>();
-
-            using (SqlConnection connection = new SqlConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-
-                string sql = "SELECT IdWarehouse, Name, Address FROM Warehouse";
-                using (SqlCommand command = new SqlCommand(sql, connection))
-                {
-                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
-                    {
-                        while (await reader.ReadAsync())
-                        {
-                            warehouses.Add(new WarehouseDTO
-                            {
-                                IdWarehouse = reader.GetInt32(0),
-                                Name = reader.GetString(1),
-                                Address = !reader.IsDBNull(2) ? reader.GetString(2) : null
-                            });
-                        }
-                    }
-                }
-            }
-
-            return warehouses;
-        }
-
-        public async Task<WarehouseDTO> GetWarehouseById(int id)
-        {
-            using (SqlConnection connection = new SqlConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-
-                string sql = "SELECT IdWarehouse, Name, Address FROM Warehouse WHERE IdWarehouse = @IdWarehouse";
-                using (SqlCommand command = new SqlCommand(sql, connection))
-                {
-                    command.Parameters.AddWithValue("@IdWarehouse", id);
-
-                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
-                    {
-                        if (await reader.ReadAsync())
-                        {
-                            return new WarehouseDTO
-                            {
-                                IdWarehouse = reader.GetInt32(0),
-                                Name = reader.GetString(1),
-                                Address = !reader.IsDBNull(2) ? reader.GetString(2) : null
-                            };
-                        }
-                        else
-                        {
-                            throw new KeyNotFoundException($"Warehouse with ID {id} not found");
-                        }
-                    }
-                }
-            }
-        }
-
-        public async Task<int> AddWarehouse(WarehouseDTO warehouse)
-        {
-            using (SqlConnection connection = new SqlConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-
-                string sql = @"
-                    INSERT INTO Warehouse (Name, Address)
-                    VALUES (@Name, @Address);
-                    SELECT SCOPE_IDENTITY();";
-
-                using (SqlCommand command = new SqlCommand(sql, connection))
-                {
-                    command.Parameters.AddWithValue("@Name", warehouse.Name);
-                    command.Parameters.AddWithValue("@Address", warehouse.Address ?? (object)DBNull.Value);
-
-                    var result = await command.ExecuteScalarAsync();
-                    return Convert.ToInt32(result);
-                }
-            }
-        }
-
-        public async Task UpdateWarehouse(int id, WarehouseDTO warehouse)
-        {
-            using (SqlConnection connection = new SqlConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-
-                string sql = @"
-                    UPDATE Warehouse 
-                    SET Name = @Name, Address = @Address
-                    WHERE IdWarehouse = @IdWarehouse";
-
-                using (SqlCommand command = new SqlCommand(sql, connection))
-                {
-                    command.Parameters.AddWithValue("@IdWarehouse", id);
-                    command.Parameters.AddWithValue("@Name", warehouse.Name);
-                    command.Parameters.AddWithValue("@Address", warehouse.Address ?? (object)DBNull.Value);
-
-                    int rowsAffected = await command.ExecuteNonQueryAsync();
-                    if (rowsAffected == 0)
-                    {
-                        throw new KeyNotFoundException($"Warehouse with ID {id} not found");
-                    }
-                }
-            }
-        }
-
-        public async Task DeleteWarehouse(int id)
-        {
-            using (SqlConnection connection = new SqlConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-                
-                string checkSql = "SELECT COUNT(1) FROM Product_Warehouse WHERE IdWarehouse = @IdWarehouse";
-                using (SqlCommand checkCommand = new SqlCommand(checkSql, connection))
-                {
-                    checkCommand.Parameters.AddWithValue("@IdWarehouse", id);
-                    int count = (int)await checkCommand.ExecuteScalarAsync();
-                    
-                    if (count > 0)
-                    {
-                        throw new InvalidOperationException("Cannot delete warehouse because it contains products");
-                    }
-                }
-
-                string sql = "DELETE FROM Warehouse WHERE IdWarehouse = @IdWarehouse";
-                using (SqlCommand command = new SqlCommand(sql, connection))
-                {
-                    command.Parameters.AddWithValue("@IdWarehouse", id);
-                    
-                    int rowsAffected = await command.ExecuteNonQueryAsync();
-                    if (rowsAffected == 0)
-                    {
-                        throw new KeyNotFoundException($"Warehouse with ID {id} not found");
-                    }
-                }
-            }
-        }
-
-        public async Task<IEnumerable<ProductWarehouseDTO>> GetWarehouseProducts(int warehouseId)
-        {
-            var products = new List<ProductWarehouseDTO>();
-
-            using (SqlConnection connection = new SqlConnection(_connectionString))
-            {
-                await connection.OpenAsync();
-
-                string sql = @"
-                    SELECT pw.IdProductWarehouse, pw.IdWarehouse, pw.IdProduct, pw.IdOrder, 
-                           pw.Amount, pw.Price, pw.CreatedAt
-                    FROM Product_Warehouse pw
-                    WHERE pw.IdWarehouse = @IdWarehouse";
-                    
-                using (SqlCommand command = new SqlCommand(sql, connection))
-                {
-                    command.Parameters.AddWithValue("@IdWarehouse", warehouseId);
-
-                    using (SqlDataReader reader = await command.ExecuteReaderAsync())
-                    {
-                        while (await reader.ReadAsync())
-                        {
-                            products.Add(new ProductWarehouseDTO
-                            {
-                                IdProductWarehouse = reader.GetInt32(0),
-                                IdWarehouse = reader.GetInt32(1),
-                                IdProduct = reader.GetInt32(2),
-                                IdOrder = reader.GetInt32(3),
-                                Amount = reader.GetInt32(4),
-                                Price = reader.GetDecimal(5),
-                                CreatedAt = reader.GetDateTime(6)
-                            });
-                        }
-                    }
-                }
-            }
-
-            return products;
-        }
-        
         private async Task<bool> CheckIfProductExists(int productId, SqlConnection connection, SqlTransaction transaction)
         {
             string sql = "SELECT COUNT(1) FROM Product WHERE IdProduct = @IdProduct";
